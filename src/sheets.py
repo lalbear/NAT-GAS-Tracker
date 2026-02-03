@@ -16,8 +16,21 @@ class SheetManager:
 
     def _auth(self):
         """Authenticate using Service Account."""
+        sid = os.environ.get("SHEET_ID", "")
+        logger.info(f"DEBUG: SHEET_ID length received: {len(sid)}")
+        
+        # Verify if Key exists
+        key_env = os.environ.get("GCP_SA_KEY", "")
+        logger.info(f"DEBUG: GCP_SA_KEY length received: {len(key_env)}")
+        
+        # Print available keys (Obfuscated) to check for Typos (e.g. SECRET_SHEET_ID)
+        env_keys = [k for k in os.environ.keys() if "GCP" in k or "SHEET" in k or "SECRET" in k]
+        logger.info(f"DEBUG: Relevant Env Vars found: {env_keys}")
+
         if not self.spreadsheet_id:
             logger.error("SPREADSHEET ID is Missing! Check your 'SHEET_ID' secret.")
+            # OPTIONAL: You can hardcode your ID here if Secrets fail
+            # self.spreadsheet_id = "YOUR_ACTUAL_ID_HERE"
             return
 
         try:
