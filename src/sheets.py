@@ -16,6 +16,10 @@ class SheetManager:
 
     def _auth(self):
         """Authenticate using Service Account."""
+        if not self.spreadsheet_id:
+            logger.error("SPREADSHEET ID is Missing! Check your 'SHEET_ID' secret.")
+            return
+
         try:
             # Check for env var with key content (GitHub Actions)
             if "GCP_SA_KEY" in os.environ:
