@@ -1,0 +1,10 @@
+
+__pycache__/
+*.pyc
+.DS_Store
+credentials.json
+.venv/
+venv/
+*.xlsx
+.env
+google_token.json

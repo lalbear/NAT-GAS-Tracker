@@ -1,0 +1,13 @@
+
+IMPORTANT: Excel vs. Google Sheets
+
+1. You mentioned extracting data from your "Copy of Nat Gas ETFs... .xlsx" file.
+2. The automation works with **Google Sheets**.
+3. **Action**:
+   - Upload your `.xlsx` file to Google Drive.
+   - **Double-click** it to open. It might open in "Office Compatibility Mode".
+   - Click **File > Save as Google Sheets**.
+   - Use the **ID** of this new Google Sheet for the automation.
+   
+The script will then update this **Google Sheet** exactly as you expect.
+(It cannot directly edit a raw .xlsx file sitting in Drive without converting it first).
