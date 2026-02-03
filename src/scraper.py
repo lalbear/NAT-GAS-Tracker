@@ -21,6 +21,7 @@ class ETFScraper:
             self.options.add_argument("--headless=new")
         self.options.add_argument("--no-sandbox")
         self.options.add_argument("--disable-dev-shm-usage")
+        self.options.add_argument("--disable-gpu")
         self.options.add_argument("--window-size=1920,1080")
         # User agent to avoid detection
         self.options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -29,23 +30,36 @@ class ETFScraper:
 
     def _init_driver(self):
         if not self.driver:
-            driver_path = ChromeDriverManager().install()
-            # Ensure we point to the binary if manager returns directory or non-binary
-            if "/THIRD_PARTY" in driver_path or not driver_path.endswith("chromedriver"):
-                 # Common issue with mac-arm64 extraction
-                 import os
-                 base_dir = os.path.dirname(driver_path)
-                 possible_binary = os.path.join(base_dir, "chromedriver")
-                 if os.path.exists(possible_binary):
-                     driver_path = possible_binary
-                 else:
-                     # Try finding it in the folder structure
+            try:
+                # Use standard install
+                driver_path = ChromeDriverManager().install()
+                
+                # Fix permissions for Linux/CI
+                import os, stat
+                try:
+                    st = os.stat(driver_path)
+                    os.chmod(driver_path, st.st_mode | stat.S_IEXEC)
+                except:
+                    pass
+                
+                # If path is directory, look inside (mac-arm issue)
+                if not driver_path.endswith("chromedriver") and "chromedriver" not in driver_path:
+                     import os
+                     base_dir = os.path.dirname(driver_path) if os.path.isfile(driver_path) else driver_path
                      for root, dirs, files in os.walk(base_dir):
                          if "chromedriver" in files:
                              driver_path = os.path.join(root, "chromedriver")
+                             os.chmod(driver_path, 0o755) # Ensure exec
                              break
-            
-            self.driver = webdriver.Chrome(service=Service(driver_path), options=self.options)
+
+                self.driver = webdriver.Chrome(service=Service(driver_path), options=self.options)
+            except Exception as e:
+                logger.error(f"Error initializing Chrome Driver: {e}")
+                # Fallback to system chromedriver if manager fails (GitHub Actions has it)
+                try:
+                    self.driver = webdriver.Chrome(options=self.options)
+                except:
+                    raise e
 
     def close(self):
         if self.driver:
