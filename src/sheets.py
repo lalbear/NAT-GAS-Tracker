@@ -78,7 +78,7 @@ class SheetManager:
         # Order of groups based on Excel analysis
         groups = ['BOIL', 'HNU', 'UNG', 'KOLD', 'HND', 'Price']
         
-        row = ["'" + str(data_dict.get('date', ''))]
+        row = [data_dict.get('date', '')]
         
         for group in groups:
             holdings = data_dict.get(group, [])
@@ -114,8 +114,103 @@ class SheetManager:
                 body=body
             ).execute()
             logger.info(f"{result.get('updates').get('updatedCells')} cells appended.")
+            
+            # Enforce Number Formatting on Value Columns
+            self._update_formatting()
+            
         except Exception as e:
             logger.error(f"Error writing to sheet: {e}")
+
+    def _update_formatting(self):
+        """
+        Force 'Number' format on Value columns to prevent Date auto-conversion.
+        Also Apply BOLD and Date Format to the Date Column (A).
+        """
+        if not self.service: return
+        
+        target_sheet_title = 'Daily Holdings (NG ETFs)'
+        sheet_id = None
+        
+        # Try to find sheetId by Name
+        try:
+            meta = self.service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+            sheets = meta.get('sheets', [])
+            
+            for s in sheets:
+                title = s['properties']['title']
+                sid = s['properties']['sheetId']
+                if title == target_sheet_title:
+                    sheet_id = sid
+                    break
+            
+            if sheet_id is None:
+                if len(sheets) > 0:
+                    sheet_id = sheets[0]['properties']['sheetId']
+                else:
+                    return
+
+        except Exception as e:
+            logger.error(f"Failed to fetch sheet metadata: {e}")
+            return
+
+        requests = []
+        
+        # 1. Format Date Column (A / Index 0) -> BOLD + Date Format (M/d/yyyy)
+        requests.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": 1,
+                    "startRowIndex": 1 
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "numberFormat": {
+                            "type": "DATE",
+                            "pattern": "M/d/yyyy"
+                        },
+                        "textFormat": {
+                            "bold": True
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat(numberFormat,textFormat)"
+            }
+        })
+
+        # 2. Format Value Columns -> Number (Integer)
+        # Columns: 2,4,6,8,10,12,14,16,18,20,22,24
+        for col_idx in range(2, 26, 2):
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startColumnIndex": col_idx,
+                        "endColumnIndex": col_idx + 1,
+                        "startRowIndex": 1 
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "numberFormat": {
+                                "type": "NUMBER",
+                                "pattern": "#,##0" 
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.numberFormat"
+                }
+            })
+            
+        body = { "requests": requests }
+        try:
+            resp = self.service.spreadsheets().batchUpdate(
+                spreadsheetId=self.spreadsheet_id,
+                body=body
+            ).execute()
+            logger.info(f"Updated formatting. Response: {len(resp.get('replies'))} replies")
+        except Exception as e:
+            logger.warning(f"Failed to update formatting: {e}")
 
 if __name__ == "__main__":
     # Test

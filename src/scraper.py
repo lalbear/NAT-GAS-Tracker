@@ -79,10 +79,6 @@ class ETFScraper:
             self.driver.get(url)
             wait = WebDriverWait(self.driver, 20)
             
-            # Look for Holdings Section/Table
-            # Sometimes need to click a tab, but often loaded. 
-            # Subagent simplified: check 'daily holdings' text or table
-            
             # Try to find the specific "Holdings" or "Daily Holdings" tab if not visible
             try:
                 holdings_tab = self.driver.find_element(By.XPATH, "//li[contains(., 'Holdings')]")
@@ -92,72 +88,101 @@ class ETFScraper:
                 logger.info("Holdings tab not found or not clickable, assuming table is present.")
 
             # Find As Of Date
-            # Selector derived from subagent: .fund-detail-table-holdings .container
-            # Or general search for "as of"
             page_text = self.driver.find_element(By.TAG_NAME, "body").text
-            # Look for "Holdings as of" specifically or date near table
             date_match = re.search(r"Holdings as of\s+(\d{1,2}/\d{1,2}/\d{4})", page_text, re.IGNORECASE)
             if not date_match:
                  date_match = re.search(r"as of\s+(\d{1,2}/\d{1,2}/\d{4})", page_text, re.IGNORECASE)
             
             as_of_date = date_match.group(1) if date_match else "Unknown"
 
-            # Find Natural Gas Future Rows
-            # The table class is typically .holdings-table or similar
-            rows = self.driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+            # Locate Table and Headers
+            # We need to find the specific table that contains "Shares/Contracts" in header
+            target_table = None
+            tables = self.driver.find_elements(By.TAG_NAME, "table")
+            
+            for tbl in tables:
+                if "Shares/Contracts" in tbl.text or "Exposure" in tbl.text:
+                    target_table = tbl
+                    break
+            
+            if not target_table:
+                logger.error(f"Could not find Holdings table for {ticker}")
+                return None
+
+            # Parse Headers to find indices
+            headers = target_table.find_elements(By.TAG_NAME, "th")
+            header_map = {h.text.strip().upper(): i for i, h in enumerate(headers)}
+            
+            # Map known headers to indices
+            # KOLD: Exposure Weight | Ticker | Description | Exposure Value | Market Value | Shares/Contracts | SEDOL
+            # BOIL: Name | ... | Shares/Contracts ? (Need to be flexible)
+            
+            desc_idx = -1
+            contracts_idx = -1
+            
+            # Find Description Column
+            for key in ["DESCRIPTION", "NAME", "SECURITY NAME", "TICKER"]:
+                if key in header_map:
+                    desc_idx = header_map[key]
+                    break
+            
+            # Find Contracts Column
+            for key in ["SHARES/CONTRACTS", "SHARES", "CONTRACTS"]:
+                if key in header_map:
+                    contracts_idx = header_map[key]
+                    break
+            
+            if desc_idx == -1 or contracts_idx == -1:
+                logger.warning(f"Could not map columns via headers. Header Map: {header_map}")
+                # Fallback: KOLD specific 
+                if ticker.upper() == "KOLD":
+                    # KOLD typically: Description is idx 2, Contracts is idx 5
+                    desc_idx = 2
+                    contracts_idx = 5
+                else: 
+                     # BOIL typically: Name idx 0, Contracts idx 2
+                    desc_idx = 0
+                    contracts_idx = 2
+
+            # Parse Rows
+            rows = target_table.find_elements(By.CSS_SELECTOR, "tbody tr")
             contracts = []
             
             for row in rows:
-                text = row.text
-                if "NATURAL GAS FUTR" in text.upper():
-                    cols = row.find_elements(By.TAG_NAME, "td")
-                    # Usually: [Name, ..., Shares/Contracts, ...]
-                    # We need to be careful with column indices. 
-                    # Subagent said: Ticker/Desc, Shares/Contracts
-                    
-                    # Heuristic: Find the column that looks like a number (contracts)
-                    # and the column that has the Future Name
-                    contract_name = text.split("NATURAL GAS FUTR")[1].split()[0] # e.g. MAR26
-                    # Clean up date part if needed
-                    
-                    # Find number in columns
-                    # Find number in columns
-                    possible_contracts = []
-                    for col in cols:
-                        col_text = col.text.strip()
-                        # Clean up val
-                        val_clean = col_text.replace(",", "").replace("$", "")
+                cols = row.find_elements(By.TAG_NAME, "td")
+                if not cols or len(cols) <= max(desc_idx, contracts_idx): continue
+                
+                desc_text = cols[desc_idx].text.strip().upper()
+                
+                if "NATURAL GAS FUTR" in desc_text:
+                    # Extract contract name (e.g. MAR26)
+                    try:
+                        contract_name = desc_text.split("NATURAL GAS FUTR")[1].strip().split()[0]
+                    except:
+                        contract_name = desc_text
                         
-                        # Handle Parenthesis for Negative (e.g. (100) -> -100)
-                        multiplier = 1
-                        if "(" in val_clean and ")" in val_clean:
-                            val_clean = val_clean.replace("(", "").replace(")", "")
-                            multiplier = -1
-                            
-                        if val_clean.isdigit():
-                            val = int(val_clean) * multiplier
-                            # Filter: Contracts are usually small integers (< 1,000,000), Exposure is usually large (>$1M)
-                            # Exception: Small ETFs. But typically Contracts < Exposure.
-                            # Also, exposure is usually currency, contracts is int.
-                            # We pick the smaller integer that is non-zero, usually.
-                            
-                            # Heuristic: If abs(val) < 1000000, likely contracts.
-                            if 0 < abs(val) < 1000000:
-                                possible_contracts.append(val)
+                    # Extract Contracts Count
+                    val_text = cols[contracts_idx].text.strip()
+                    # Clean -26,090 -> 26090
+                    clean_val = val_text.replace(",", "").replace("$", "")
                     
-                    if possible_contracts:
-                        # Take the first one found, or the one that seems most reasonable?
-                        # Usually Shares/Contracts is the first numeric column after Name.
-                        contract_count = possible_contracts[0]
+                    try:
+                        # Handle Parenthesis
+                        if "(" in clean_val and ")" in clean_val:
+                            clean_val = "-" + clean_val.replace("(", "").replace(")", "")
                         
+                        val = int(float(clean_val)) # Use float first to be safe
+                        
+                        # Add to list
                         contracts.append({
                             "ticker": ticker,
-                            "contract_month": contract_name, # Needs normalization later
-                            "count": contract_count
+                            "contract_month": contract_name,
+                            "count": val
                         })
-                        # break # Don't break, might be multiple? No, one row per future per month usually.
-                        pass
-            
+                    except:
+                        logger.warning(f"Failed to parse contract value '{val_text}' for {contract_name}")
+                        continue
+
             return {"date": as_of_date, "contracts": contracts}
 
         except Exception as e:
