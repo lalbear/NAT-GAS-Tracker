@@ -78,7 +78,7 @@ class SheetManager:
         # Order of groups based on Excel analysis
         groups = ['BOIL', 'HNU', 'UNG', 'KOLD', 'HND', 'Price']
         
-        row = [data_dict.get('date', '')]
+        row = ["'" + str(data_dict.get('date', ''))]
         
         for group in groups:
             holdings = data_dict.get(group, [])
@@ -87,15 +87,18 @@ class SheetManager:
             
             # C1
             if len(holdings) > 0:
-                row.append(holdings[0].get('month', ''))
-                row.append(holdings[0].get('val', ''))
+                row.append("'" + str(holdings[0].get('month', '')))
+                # Handle cases where value might be very large or formatted weirdly
+                val = holdings[0].get('val', '')
+                row.append(val)
             else:
                 row.extend(['', ''])
                 
             # C2
             if len(holdings) > 1:
-                row.append(holdings[1].get('month', ''))
-                row.append(holdings[1].get('val', ''))
+                row.append("'" + str(holdings[1].get('month', '')))
+                val = holdings[1].get('val', '')
+                row.append(val)
             else:
                 row.extend(['', ''])
         

@@ -34,6 +34,10 @@ class ETFScraper:
                 # Use standard install
                 driver_path = ChromeDriverManager().install()
                 
+                # Fix for WDM returning notice file on Mac ARM
+                if "THIRD_PARTY_NOTICES" in driver_path:
+                    driver_path = driver_path.replace("THIRD_PARTY_NOTICES.chromedriver", "chromedriver")
+
                 # Fix permissions for Linux/CI
                 import os, stat
                 try:
@@ -117,16 +121,42 @@ class ETFScraper:
                     # Clean up date part if needed
                     
                     # Find number in columns
+                    # Find number in columns
+                    possible_contracts = []
                     for col in cols:
-                        val = col.text.replace(",", "").strip()
-                        if val.isdigit() and int(val) > 0:
-                            # Likely the contracts count
-                            contracts.append({
-                                "ticker": ticker,
-                                "contract_month": contract_name, # Needs normalization later
-                                "count": int(val)
-                            })
-                            break
+                        col_text = col.text.strip()
+                        # Clean up val
+                        val_clean = col_text.replace(",", "").replace("$", "")
+                        
+                        # Handle Parenthesis for Negative (e.g. (100) -> -100)
+                        multiplier = 1
+                        if "(" in val_clean and ")" in val_clean:
+                            val_clean = val_clean.replace("(", "").replace(")", "")
+                            multiplier = -1
+                            
+                        if val_clean.isdigit():
+                            val = int(val_clean) * multiplier
+                            # Filter: Contracts are usually small integers (< 1,000,000), Exposure is usually large (>$1M)
+                            # Exception: Small ETFs. But typically Contracts < Exposure.
+                            # Also, exposure is usually currency, contracts is int.
+                            # We pick the smaller integer that is non-zero, usually.
+                            
+                            # Heuristic: If abs(val) < 1000000, likely contracts.
+                            if 0 < abs(val) < 1000000:
+                                possible_contracts.append(val)
+                    
+                    if possible_contracts:
+                        # Take the first one found, or the one that seems most reasonable?
+                        # Usually Shares/Contracts is the first numeric column after Name.
+                        contract_count = possible_contracts[0]
+                        
+                        contracts.append({
+                            "ticker": ticker,
+                            "contract_month": contract_name, # Needs normalization later
+                            "count": contract_count
+                        })
+                        # break # Don't break, might be multiple? No, one row per future per month usually.
+                        pass
             
             return {"date": as_of_date, "contracts": contracts}
 

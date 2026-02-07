@@ -24,13 +24,13 @@ class ContractCalculator:
             return None
 
     def normalize_contract_month(self, contract_name):
-        """Convert 'MAR26', 'March 2026', 'Mar 26' to 'MAR26'."""
+        """Convert 'MAR26', 'March 2026', 'Mar 26' to 'Mar-26'."""
         # Mapping for Excel Month Codes
         months = {
-            "JAN": "JAN", "FEB": "FEB", "MAR": "MAR", "APR": "APR", "MAY": "MAY", "JUN": "JUN",
-            "JUL": "JUL", "AUG": "AUG", "SEP": "SEP", "OCT": "OCT", "NOV": "NOV", "DEC": "DEC",
-            "JANUARY": "JAN", "FEBRUARY": "FEB", "MARCH": "MAR", "APRIL": "APR", "MAY": "MAY", "JUNE": "JUN",
-            "JULY": "JUL", "AUGUST": "AUG", "SEPTEMBER": "SEP", "OCTOBER": "OCT", "NOVEMBER": "NOV", "DECEMBER": "DEC"
+            "JAN": "Jan", "FEB": "Feb", "MAR": "Mar", "APR": "Apr", "MAY": "May", "JUN": "Jun",
+            "JUL": "Jul", "AUG": "Aug", "SEP": "Sep", "OCT": "Oct", "NOV": "Nov", "DEC": "Dec",
+            "JANUARY": "Jan", "FEBRUARY": "Feb", "MARCH": "Mar", "APRIL": "Apr", "MAY": "May", "JUNE": "Jun",
+            "JULY": "Jul", "AUGUST": "Aug", "SEPTEMBER": "Sep", "OCTOBER": "Oct", "NOVEMBER": "Nov", "DECEMBER": "Dec"
         }
         
         try:
@@ -45,7 +45,6 @@ class ContractCalculator:
             
             # Extract Year (2 digits)
             # Look for 2026, 26, '26
-            import re
             year = "26" # Default/Fallback
             y_match = re.search(r"(\d{4})", name_upper)
             if y_match:
@@ -58,25 +57,25 @@ class ContractCalculator:
                     year = name_upper[-2:]
             
             if m_code != "UNK":
-                return f"{m_code}{year}"
+                return f"{m_code}-{year}"
             
             return contract_name # Return original if parsing fails
         except:
             return contract_name
 
     def get_contract_sort_value(self, contract_name):
-        """Return YYYYMM integer for sorting 'MAR26', 'APR26'."""
+        """Return YYYYMM integer for sorting 'Mar-26'."""
         code = self.normalize_contract_month(contract_name)
-        # Assuming format MMMYY e.g. MAR26
-        if len(code) != 5: return 999999
+        # Assuming format MMM-YY e.g. Mar-26
+        if len(code) != 6: return 999999
         
         m_map = {
-            "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
-            "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12
+            "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+            "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
         }
         
         m_str = code[:3]
-        y_str = code[3:] 
+        y_str = code[4:] 
         
         try:
             year = 2000 + int(y_str)
