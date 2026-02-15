@@ -155,7 +155,7 @@ class SheetManager:
 
         requests = []
         
-        # 1. Format Date Column (A / Index 0) -> BOLD + Date Format (M/d/yyyy)
+        # 1. Format Date Column (A / Index 0) -> BOLD + Date Format (M/d/yyyy) + LEFT alignment
         requests.append({
             "repeatCell": {
                 "range": {
@@ -172,14 +172,15 @@ class SheetManager:
                         },
                         "textFormat": {
                             "bold": True
-                        }
+                        },
+                        "horizontalAlignment": "LEFT"
                     }
                 },
-                "fields": "userEnteredFormat(numberFormat,textFormat)"
+                "fields": "userEnteredFormat(numberFormat,textFormat,horizontalAlignment)"
             }
         })
 
-        # 2. Format Value Columns -> Number (Integer)
+        # 2. Format Value Columns -> Number with decimals (for prices)
         # Columns: 2,4,6,8,10,12,14,16,18,20,22,24
         for col_idx in range(2, 26, 2):
             requests.append({
@@ -194,11 +195,32 @@ class SheetManager:
                         "userEnteredFormat": {
                             "numberFormat": {
                                 "type": "NUMBER",
-                                "pattern": "#,##0" 
-                            }
+                                "pattern": "#,##0.0000" 
+                            },
+                            "horizontalAlignment": "LEFT"
                         }
                     },
-                    "fields": "userEnteredFormat.numberFormat"
+                    "fields": "userEnteredFormat(numberFormat,horizontalAlignment)"
+                }
+            })
+        
+        # 3. Format Month Columns -> Text with LEFT alignment
+        # Columns: 1,3,5,7,9,11,13,15,17,19,21,23,25
+        for col_idx in range(1, 26, 2):
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startColumnIndex": col_idx,
+                        "endColumnIndex": col_idx + 1,
+                        "startRowIndex": 1 
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "horizontalAlignment": "LEFT"
+                        }
+                    },
+                    "fields": "userEnteredFormat.horizontalAlignment"
                 }
             })
             
