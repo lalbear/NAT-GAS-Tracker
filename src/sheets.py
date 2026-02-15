@@ -54,9 +54,39 @@ class SheetManager:
         except Exception as e:
             logger.error(f"Authentication failed: {e}")
 
+    def _find_row_for_date(self, date_str):
+        """
+        Search for a row with the given date in column A.
+        Returns row number (1-indexed) if found, None otherwise.
+        """
+        if not self.service:
+            return None
+        
+        try:
+            range_name = 'Daily Holdings (NG ETFs)!A:A'
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            # Search for matching date (skip header row at index 0)
+            for i, row in enumerate(values):
+                if i == 0:  # Skip header
+                    continue
+                if row and len(row) > 0 and row[0] == date_str:
+                    return i + 1  # Return 1-indexed row number
+            
+            return None
+        except Exception as e:
+            logger.warning(f"Error searching for date: {e}")
+            return None
+
     def append_data(self, data_dict):
         """
-        Append a new row to 'Daily Holdings (NG ETFs)'.
+        Add or update a row in 'Daily Holdings (NG ETFs)'.
+        If date exists, updates that row. If new date, appends new row.
         Row Format (Columns A-AC approx):
         Date | BOIL (C1 M, C1 V, C2 M, C2 V) | HNU (...) | UNG (...) | KOLD (...) | HND (...) | Price (...)
         
@@ -73,12 +103,15 @@ class SheetManager:
             logger.error("No Service available")
             return
 
-        range_name = 'Daily Holdings (NG ETFs)!A:AC' 
+        date_str = data_dict.get('date', '')
+        
+        # Check if row for this date already exists
+        existing_row_num = self._find_row_for_date(date_str)
         
         # Order of groups based on Excel analysis
         groups = ['BOIL', 'HNU', 'UNG', 'KOLD', 'HND', 'Price']
         
-        row = [data_dict.get('date', '')]
+        row = [date_str]
         
         for group in groups:
             holdings = data_dict.get(group, [])
@@ -107,13 +140,26 @@ class SheetManager:
         }
 
         try:
-            result = self.service.spreadsheets().values().append(
-                spreadsheetId=self.spreadsheet_id,
-                range=range_name,
-                valueInputOption='USER_ENTERED',
-                body=body
-            ).execute()
-            logger.info(f"{result.get('updates').get('updatedCells')} cells appended.")
+            if existing_row_num:
+                # Update existing row
+                range_name = f'Daily Holdings (NG ETFs)!A{existing_row_num}:AC{existing_row_num}'
+                result = self.service.spreadsheets().values().update(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=range_name,
+                    valueInputOption='USER_ENTERED',
+                    body=body
+                ).execute()
+                logger.info(f"Updated row {existing_row_num} for date {date_str}. {result.get('updatedCells')} cells updated.")
+            else:
+                # Append new row
+                range_name = 'Daily Holdings (NG ETFs)!A:AC'
+                result = self.service.spreadsheets().values().append(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=range_name,
+                    valueInputOption='USER_ENTERED',
+                    body=body
+                ).execute()
+                logger.info(f"Appended new row for date {date_str}. {result.get('updates').get('updatedCells')} cells appended.")
             
             # Enforce Number Formatting on Value Columns
             self._update_formatting()
