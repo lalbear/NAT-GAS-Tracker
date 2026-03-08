@@ -369,6 +369,9 @@ class ETFScraper:
 
     def get_unl_prices(self):
         """Scrape UNL Holdings for settlement prices of 12 months."""
+        from calculator import ContractCalculator
+        calc = ContractCalculator()
+        
         self._init_driver()
         url = "https://www.uscfinvestments.com/holdings/unl"
         logger.info(f"Scraping UNL Prices from {url}")
@@ -378,7 +381,6 @@ class ETFScraper:
             wait = WebDriverWait(self.driver, 20)
             time.sleep(5) # Wait for table
             
-            # rows = self.driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
             rows = self.driver.find_elements(By.TAG_NAME, "tr")
             logger.info(f"Found {len(rows)} UNL rows")
             
@@ -393,17 +395,18 @@ class ETFScraper:
                 name = col_texts[0]
                 if "NATURAL GAS" in name.upper():
                     try:
+                        # Handle formats like "NATURAL GAS FUTR Mar26"
                         month_code = name.split("FUTR")[1].strip() # Mar26
                         
                         # Price is usually in column 2 (0-indexed: Name, Qty, Price, MV)
-                        # Log shows: ['NATURAL GAS FUTR Mar26', '39', '3.2370', '$1,262,430.00', 'NGH26']
-                        # So Index 2 is 3.2370
                         if len(col_texts) > 2:
                             price_str = col_texts[2]
                             try:
                                 val = float(price_str.replace(",", ""))
                                 if val < 500:
-                                    prices[month_code.upper()] = val
+                                    norm_month = calc.normalize_contract_month(month_code)
+                                    prices[norm_month] = val
+                                    logger.info(f"Matched Price: {norm_month} -> {val}")
                                     continue
                             except:
                                 pass
@@ -413,15 +416,15 @@ class ETFScraper:
                             if "$" not in txt: # Exclude MV
                                 try:
                                     val = float(txt.replace(",", ""))
-                                    if 0.5 < val < 500 and val != float(col_texts[1]): # Not Qty (39) if possible, but price is small
-                                        prices[month_code.upper()] = val
+                                    if 0.5 < val < 500 and val != float(col_texts[1]): 
+                                        norm_month = calc.normalize_contract_month(month_code)
+                                        prices[norm_month] = val
+                                        logger.info(f"Matched Price (Fallback): {norm_month} -> {val}")
                                         break
                                 except:
                                     pass
                     except Exception as e:
                         pass
-                                
-            return prices
                                 
             return prices
 
